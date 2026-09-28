@@ -37,6 +37,15 @@ student_router = APIRouter(prefix="/students", tags=["Students"])
 admin_router = APIRouter(prefix="/admin", tags=["Admin"])
 
 
+@app.get("/")
+async def home():
+    return {
+        "message": "Course Schedule Plotting API",
+        "docs": "/docs",
+        "health": "/health",
+    }
+
+
 class StudentAccountCreate(BaseModel):
     student_id: str = Field(min_length=1, max_length=50)
     email: str = Field(min_length=3, max_length=255)
