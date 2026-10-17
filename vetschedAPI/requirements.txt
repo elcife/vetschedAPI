@@ -1,0 +1,5 @@
+fastapi
+asyncpg
+bcrypt
+python-dotenv
+reportlab
