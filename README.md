@@ -425,3 +425,9 @@ submission endpoints require an admin session cookie. The login and logout
 endpoints are public.
 Student subjects, schedules, profile, plots, PDF export, password, year-level,
 and submit endpoints require a student session cookie.
+
+Group members:
+Sean John M Garcia
+Jeudi Faust Espinosa
+Lawrence Kim Rey
+Jan Rafael Donaldo
