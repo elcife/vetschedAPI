@@ -870,15 +870,28 @@ async def admin_login(
 ):
     row = await pool.fetchrow(
         """SELECT admin_id, username, display_name, is_active,
-                  password_hash = crypt($2, password_hash) AS password_matches
+                  password_hash,
+                  COALESCE(password_hash = crypt($2, password_hash), FALSE)
+                      AS password_matches
            FROM admin_account WHERE LOWER(username) = LOWER($1)""",
         data.username.strip(),
         data.password,
     )
+    password_matches = False
+    if row is not None and row["is_active"]:
+        password_hash = row["password_hash"]
+        password_matches = row["password_matches"]
+        if not password_matches and isinstance(password_hash, str):
+            try:
+                password_matches = bcrypt.checkpw(
+                    data.password.encode("utf-8"), password_hash.encode("utf-8")
+                )
+            except ValueError:
+                password_matches = False
     if (
         row is None
         or not row["is_active"]
-        or not row["password_matches"]
+        or not password_matches
     ):
         raise HTTPException(status_code=401, detail="Invalid admin username or password.")
     set_session_cookie(
