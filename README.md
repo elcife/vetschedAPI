@@ -1,16 +1,112 @@
 # Course Schedule Plotting API
 
-FastAPI service for student accounts and schedule plotting, and authenticated
-administrator management of subjects, classes, and schedule submissions.
+Course Schedule Plotting is a Python 3.12, FastAPI application backed by
+PostgreSQL. It lets students browse available subjects and class offerings,
+plot and submit schedules, remove individual draft plots, and export their
+schedule as a PDF. Administrators manage subjects, sections, rooms,
+instructors, class offerings, and submitted student plots.
 
-## Run locally
+## System overview
 
-1. Install the packages in `requirements.txt`.
-2. Copy `.env.example` to `.env` and set the database connection values.
-3. Start the service with `uvicorn main:app --reload`.
+- **Student workflow:** register or log in, browse subjects and open classes,
+  plot classes into a draft schedule, remove draft plots, submit the schedule
+  for review, and download a PDF.
+- **Administrator workflow:** log in to manage the course catalog and class
+  resources, then review submitted schedules.
+- **API and database:** FastAPI exposes the REST endpoints and PostgreSQL
+  stores accounts, catalog data, class offerings, plotted schedules, and
+  submissions. The PostgreSQL archive in `vetsched.sql` provides the database
+  schema and starter data.
+- **Authentication:** student and administrator sign-ins set separate,
+  role-specific HttpOnly session cookies. Protected endpoints require the
+  matching session; students can access only their own records.
 
-Interactive API documentation is available at `/docs`; liveness is available
-at `/health`.
+## Group members
+
+Add group member names here.
+
+## Setup and run locally
+
+These instructions use Windows PowerShell and Python 3.12.
+
+### 1. Get the project and install prerequisites
+
+Clone the repository, or open PowerShell in the project directory containing
+`main.py`, `requirements.txt`, and `vetsched.sql`:
+
+```powershell
+git clone https://github.com/elcife/vetschedAPI.git
+Set-Location .\vetschedAPI
+```
+
+Install Python 3.12 and PostgreSQL. The PostgreSQL command-line tools,
+including `pg_restore`, are needed to load the supplied database archive.
+
+### 2. Create and restore the database
+
+Create an empty PostgreSQL database named `vetsched` using pgAdmin or the
+PostgreSQL command line. From the project directory, restore the supplied
+archive into that empty database:
+
+```powershell
+pg_restore --no-owner --no-privileges --dbname=vetsched .\vetsched.sql
+```
+
+The archive uses PostgreSQL's custom dump format despite its `.sql` filename.
+If `pg_restore` is not on `PATH`, run the `pg_restore.exe` from your
+PostgreSQL installation's `bin` directory. Use an empty database: the restore
+can fail if tables or other objects with the same names already exist.
+
+### 3. Configure the application
+
+From the project directory, create a virtual environment, activate it, and
+install the project dependencies:
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+Copy the example environment file and edit `.env` with the connection values
+for the PostgreSQL database:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Set `user`, `password`, `host`, `port`, and `database` in `.env`. The
+application connects using PostgreSQL SSL (`ssl=require`), so the database
+server must support SSL. Set `database` to `vetsched` if you restored the
+provided archive under that name.
+
+Set `SESSION_SECRET` to a private value at least 32 UTF-8 bytes long. You can
+generate one locally with:
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+Copy the generated value into `.env`. Do not commit `.env` or share its
+contents.
+
+### 4. Create an initial administrator
+
+After restoring the database, run the SQL in the
+[initial admin account](#create-the-initial-admin-account) section below,
+using a strong private password of your choice.
+
+### 5. Start and check the API
+
+With the virtual environment activated and `.env` configured, run:
+
+```powershell
+python -m uvicorn main:app --reload
+```
+
+Open `http://127.0.0.1:8000/docs` for interactive API documentation.
+`http://127.0.0.1:8000/health` provides a health check.
 
 ## Authentication
 
@@ -29,13 +125,26 @@ not a user-facing access token. Existing `AUTH_TOKEN_SECRET` and
 
 ### Create the initial admin account
 
-Run this once in the PostgreSQL SQL editor. It stores a bcrypt hash, not the
-plaintext password. `pgcrypto` provides PostgreSQL's `crypt` and `gen_salt`
-functions; if the extension is already enabled, the first statement is a no-op.
+Run this once in the PostgreSQL SQL editor, replacing the username,
+display name, and password placeholders with values you choose privately.
+This stores a bcrypt hash rather than the plaintext password. `pgcrypto`
+provides PostgreSQL's `crypt` and `gen_salt` functions.
 
+```sql
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-Then sign in with username `Admin1` and password `AdminTest123` at
-`POST /admin/login`. Change this sample password after the first login.
+INSERT INTO admin_account (username, password_hash, display_name, is_active)
+VALUES (
+    'Admin1',
+    crypt('REPLACE_WITH_A_STRONG_PRIVATE_PASSWORD', gen_salt('bf')),
+    'Administrator',
+    TRUE
+);
+```
+
+Use the username and password you selected at `POST /admin/login`. Do not
+leave the example password in place or commit real credentials to the
+repository.
 
 ## Use-case examples
 
