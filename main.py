@@ -14,13 +14,17 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 load_dotenv(Path(__file__).with_name(".env"))
 
+# Load settings from .env.
 
+
+# Check password length before hashing.
 def validate_bcrypt_password(password: str) -> str:
     if len(password.encode("utf-8")) > 72:
         raise ValueError("Password must be no more than 72 UTF-8 bytes.")
     return password
 
 
+# Open and close the database connection pool.
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = {
@@ -44,6 +48,7 @@ async def lifespan(app: FastAPI):
         await app.state.pool.close()
 
 
+# Configure the FastAPI app and its routes.
 app = FastAPI(
     title="Course Schedule Plotting",
     version="1.0.0",
@@ -69,7 +74,7 @@ app.add_middleware(
 student_router = APIRouter(prefix="/students", tags=["Students"])
 admin_router = APIRouter(prefix="/admin", tags=["Admin"])
 
-
+# API information and health links.
 @app.get("/", tags=["System"])
 async def home():
     return {
@@ -79,6 +84,7 @@ async def home():
     }
 
 
+# Request data validation models.
 class StudentAccountCreate(BaseModel):
     student_id: str = Field(min_length=1, max_length=50)
     email: str = Field(min_length=3, max_length=255)
@@ -234,7 +240,7 @@ class ClassCreate(BaseModel):
 class SubmissionDecision(BaseModel):
     status: Literal["Approved", "Rejected"]
 
-
+# Get the database connection pool.
 def get_pool(request: Request) -> asyncpg.Pool:
     pool = getattr(request.app.state, "pool", None)
     if pool is None:
@@ -242,6 +248,7 @@ def get_pool(request: Request) -> asyncpg.Pool:
     return pool
 
 
+# Clean and validate a student ID.
 def normalize_student_id(student_id: str) -> str:
     normalized = student_id.replace("-", "")
     if not normalized.isdigit() or not 9 <= len(normalized) <= 12:
@@ -249,6 +256,7 @@ def normalize_student_id(student_id: str) -> str:
     return normalized
 
 
+# Student account routes.
 @student_router.post("/register", status_code=status.HTTP_201_CREATED)
 async def create_student_account(data: StudentAccountCreate, pool: asyncpg.Pool = Depends(get_pool)):
     password_hash = bcrypt.hashpw(data.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
@@ -270,6 +278,7 @@ async def create_student_account(data: StudentAccountCreate, pool: asyncpg.Pool 
     return dict(row)
 
 
+# Sign in a student.
 @student_router.post("/login")
 async def student_login(data: StudentLogin, pool: asyncpg.Pool = Depends(get_pool)):
     row = await pool.fetchrow(
@@ -286,6 +295,7 @@ async def student_login(data: StudentLogin, pool: asyncpg.Pool = Depends(get_poo
     }
 
 
+# Change a student's password.
 @student_router.put("/password")
 async def change_student_password(
     data: StudentPasswordChange, pool: asyncpg.Pool = Depends(get_pool)
@@ -312,6 +322,7 @@ async def change_student_password(
     return {"success": True, "message": "Password updated successfully."}
 
 
+# Update year level and clear the schedule if it changes.
 @student_router.put("/year-level")
 async def change_student_year_level(
     data: StudentYearLevelChange, pool: asyncpg.Pool = Depends(get_pool)
@@ -339,6 +350,7 @@ async def change_student_year_level(
     return {"success": True, "message": "Year level updated and schedule cleared."}
 
 
+# List available offerings for the selected year and semester.
 @student_router.get("/subjects")
 async def student_subjects(
     year_level: int | None = None,
@@ -396,6 +408,7 @@ async def student_subjects(
     ]
 
 
+# Get a student's account details by ID.
 @student_router.get("/{student_id}/profile")
 async def student_profile(student_id: str, pool: asyncpg.Pool = Depends(get_pool)):
     student_id = normalize_student_id(student_id)
@@ -409,6 +422,7 @@ async def student_profile(student_id: str, pool: asyncpg.Pool = Depends(get_pool
     return dict(row)
 
 
+# List open class schedules.
 @student_router.get("/schedules")
 async def available_schedules(pool: asyncpg.Pool = Depends(get_pool)):
     rows = await pool.fetch(
@@ -428,6 +442,7 @@ async def available_schedules(pool: asyncpg.Pool = Depends(get_pool)):
     return [dict(row) for row in rows]
 
 
+# Show a student's draft schedule and status.
 @student_router.get("/{student_id}/plots")
 async def student_plots(student_id: str, pool: asyncpg.Pool = Depends(get_pool)):
     student_id = normalize_student_id(student_id)
@@ -446,6 +461,7 @@ async def student_plots(student_id: str, pool: asyncpg.Pool = Depends(get_pool))
     return [dict(row) for row in rows]
 
 
+# List a student's submitted courses for this semester.
 @student_router.get("/{student_id}/enrolled-courses")
 async def enrolled_courses(student_id: str, pool: asyncpg.Pool = Depends(get_pool)):
     student_id = normalize_student_id(student_id)
@@ -475,6 +491,7 @@ async def enrolled_courses(student_id: str, pool: asyncpg.Pool = Depends(get_poo
     return [{**dict(row), "offeringIds": [row["offeringId"]]} for row in rows]
 
 
+# Save selected classes if they are open and have space.
 @student_router.post("/{student_id}/enrollment")
 async def enroll_in_offerings(
     student_id: str, data: EnrollmentChange, pool: asyncpg.Pool = Depends(get_pool)
@@ -532,6 +549,7 @@ async def enroll_in_offerings(
     return {"success": True}
 
 
+# Remove selected offerings and mark the schedule for changes.
 @student_router.delete("/{student_id}/enrollment")
 async def unenroll_from_offerings(
     student_id: str, data: EnrollmentChange, pool: asyncpg.Pool = Depends(get_pool)
@@ -555,6 +573,7 @@ async def unenroll_from_offerings(
     return {"success": True}
 
 
+# Submit the student's enrollment for review.
 @student_router.post("/{student_id}/enrollment/submit")
 async def submit_enrollment(student_id: str, pool: asyncpg.Pool = Depends(get_pool)):
     student_id = normalize_student_id(student_id)
@@ -578,6 +597,7 @@ async def submit_enrollment(student_id: str, pool: asyncpg.Pool = Depends(get_po
     return {"success": True, "message": "Schedule submitted successfully."}
 
 
+# Add an available class to the student's draft schedule.
 @student_router.post("/{student_id}/plots", status_code=status.HTTP_201_CREATED)
 async def plot_schedule(
     student_id: str,
@@ -630,6 +650,7 @@ async def plot_schedule(
     return dict(row)
 
 
+# Submit the student's draft schedule for approval.
 @student_router.post("/{student_id}/submit")
 async def submit_plotted_schedule(student_id: str, pool: asyncpg.Pool = Depends(get_pool)):
     student_id = normalize_student_id(student_id)
@@ -653,6 +674,7 @@ async def submit_plotted_schedule(student_id: str, pool: asyncpg.Pool = Depends(
     return {"message": "Schedule submitted to the admin.", "plots": [dict(row) for row in rows]}
 
 
+# Admin sign-in and password routes.
 @admin_router.post("/login")
 async def admin_login(data: AdminLogin, pool: asyncpg.Pool = Depends(get_pool)):
     row = await pool.fetchrow(
@@ -675,6 +697,7 @@ async def admin_login(data: AdminLogin, pool: asyncpg.Pool = Depends(get_pool)):
     }
 
 
+# Change an admin's password after verifying the current one.
 @admin_router.put("/password")
 async def change_admin_password(
     data: AdminPasswordChange, pool: asyncpg.Pool = Depends(get_pool)
@@ -703,6 +726,7 @@ async def change_admin_password(
     return {"success": True, "message": "Password updated successfully."}
 
 
+# Subject management routes.
 @admin_router.post("/subjects", status_code=status.HTTP_201_CREATED)
 async def create_subject(data: SubjectCreate, pool: asyncpg.Pool = Depends(get_pool)):
     row = await pool.fetchrow(
@@ -716,6 +740,7 @@ async def create_subject(data: SubjectCreate, pool: asyncpg.Pool = Depends(get_p
     return dict(row)
 
 
+# Update a subject.
 @admin_router.put("/subjects/{subject_id}")
 async def update_subject(
     subject_id: int, data: SubjectCreate, pool: asyncpg.Pool = Depends(get_pool)
@@ -735,6 +760,7 @@ async def update_subject(
     return dict(row)
 
 
+# Remove a subject from the catalog.
 @admin_router.delete("/subjects/{subject_id}")
 async def delete_subject(subject_id: int, pool: asyncpg.Pool = Depends(get_pool)):
     deleted = await pool.fetchval(
@@ -745,6 +771,7 @@ async def delete_subject(subject_id: int, pool: asyncpg.Pool = Depends(get_pool)
     return {"success": True}
 
 
+# List all subjects.
 @admin_router.get("/subjects")
 async def list_subjects(pool: asyncpg.Pool = Depends(get_pool)):
     rows = await pool.fetch(
@@ -755,6 +782,7 @@ async def list_subjects(pool: asyncpg.Pool = Depends(get_pool)):
     return [dict(row) for row in rows]
 
 
+# Change the active semester and reset scheduling.
 @admin_router.put("/semester")
 async def change_semester(data: SemesterChange, pool: asyncpg.Pool = Depends(get_pool)):
     async with pool.acquire() as connection:
@@ -770,6 +798,7 @@ async def change_semester(data: SemesterChange, pool: asyncpg.Pool = Depends(get
     return {"success": True, "semester": data.semester, "updated": updated_count}
 
 
+# Instructor management routes.
 @admin_router.post("/instructors", status_code=status.HTTP_201_CREATED)
 async def create_instructor(data: InstructorCreate, pool: asyncpg.Pool = Depends(get_pool)):
     name = data.instructor_name.strip()
@@ -781,6 +810,7 @@ async def create_instructor(data: InstructorCreate, pool: asyncpg.Pool = Depends
     return dict(row)
 
 
+# List instructors.
 @admin_router.get("/instructors")
 async def list_instructors(pool: asyncpg.Pool = Depends(get_pool)):
     rows = await pool.fetch(
@@ -789,6 +819,7 @@ async def list_instructors(pool: asyncpg.Pool = Depends(get_pool)):
     return [dict(row) for row in rows]
 
 
+# Add a classroom.
 @admin_router.post("/rooms", status_code=status.HTTP_201_CREATED)
 async def create_room(data: RoomCreate, pool: asyncpg.Pool = Depends(get_pool)):
     row = await pool.fetchrow(
@@ -799,12 +830,14 @@ async def create_room(data: RoomCreate, pool: asyncpg.Pool = Depends(get_pool)):
     return dict(row)
 
 
+# List classrooms.
 @admin_router.get("/rooms")
 async def list_rooms(pool: asyncpg.Pool = Depends(get_pool)):
     rows = await pool.fetch("SELECT * FROM room ORDER BY building, room_num")
     return [dict(row) for row in rows]
 
 
+# List student accounts.
 @admin_router.get("/students")
 async def list_students(pool: asyncpg.Pool = Depends(get_pool)):
     rows = await pool.fetch(
@@ -816,6 +849,7 @@ async def list_students(pool: asyncpg.Pool = Depends(get_pool)):
     return [dict(row) for row in rows]
 
 
+# Create a section for a subject.
 @admin_router.post("/sections", status_code=status.HTTP_201_CREATED)
 async def create_section(data: SectionCreate, pool: asyncpg.Pool = Depends(get_pool)):
     async with pool.acquire() as connection:
