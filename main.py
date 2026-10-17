@@ -831,6 +831,45 @@ async def plot_schedule(
     return dict(row)
 
 
+# Remove one of the student's draft plots.
+@student_router.delete("/{student_id}/plots/{plot_id}")
+async def remove_plotted_schedule(
+    student_id: str,
+    plot_id: int,
+    current_student: dict = Depends(require_student),
+    pool: asyncpg.Pool = Depends(get_pool),
+):
+    student_id = normalize_student_id(student_id)
+    ensure_student_owns_account(student_id, current_student)
+    async with pool.acquire() as connection:
+        async with connection.transaction():
+            row = await connection.fetchrow(
+                """DELETE FROM plotting
+                   WHERE plot_id = $1 AND student_id = $2 AND status = 'Draft'
+                   RETURNING plot_id""",
+                plot_id,
+                student_id,
+            )
+            if row is None:
+                existing = await connection.fetchrow(
+                    """SELECT status FROM plotting
+                       WHERE plot_id = $1 AND student_id = $2""",
+                    plot_id,
+                    student_id,
+                )
+                if existing is None:
+                    raise HTTPException(status_code=404, detail="Plotted class not found.")
+                raise HTTPException(
+                    status_code=409,
+                    detail="Only draft plotted classes can be removed.",
+                )
+    return {
+        "success": True,
+        "message": "Draft plotted class removed.",
+        "plot_id": row["plot_id"],
+    }
+
+
 # Submit the student's draft schedule for approval.
 @student_router.post("/{student_id}/submit")
 async def submit_plotted_schedule(

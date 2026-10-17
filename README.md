@@ -123,6 +123,24 @@ Read the student's plotted classes with `GET /students/202400123/plots`
 (`200 OK`). Submit all draft plots to the administrator with
 `POST /students/202400123/submit` (no request body).
 
+Remove one draft plot with
+`DELETE /students/202400123/plots/17` (the plot ID comes from the plotted
+classes response):
+
+**200 OK**
+
+```json
+{
+  "success": true,
+  "message": "Draft plotted class removed.",
+  "plot_id": 17
+}
+```
+
+Only draft plots can be removed; submitted or reviewed plots return
+`409 Conflict`. A missing plot ID returns `404 Not Found`; a request using
+another student's ID returns `403 Forbidden`.
+
 **200 OK**
 
 ```json
@@ -288,6 +306,7 @@ A plot that is not awaiting review returns `404`.
 | `GET /students/{student_id}/plots` | 200 | 422 invalid ID |
 | `GET /students/{student_id}/plots/pdf` | 200 PDF | 404 student not found; 422 invalid ID |
 | `POST /students/{student_id}/plots` | 201 | 404 class not found; 409 closed/full/duplicate; 422 invalid input |
+| `DELETE /students/{student_id}/plots/{plot_id}` | 200 | 404 plot not found; 409 plot is not a draft; 403 another student's plot |
 | `POST /students/{student_id}/submit` | 200 | 409 no draft classes |
 | `POST /admin/login` | 200 | 401 invalid credentials; 503 session secret not configured |
 | Protected `/admin/*` routes | varies by operation | 401 missing/invalid session; 404 missing resource; 422 invalid input |
