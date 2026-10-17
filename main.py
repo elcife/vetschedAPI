@@ -869,14 +869,16 @@ async def admin_login(
     pool: asyncpg.Pool = Depends(get_pool),
 ):
     row = await pool.fetchrow(
-        """SELECT admin_id, username, password_hash, display_name, is_active
+        """SELECT admin_id, username, display_name, is_active,
+                  password_hash = crypt($2, password_hash) AS password_matches
            FROM admin_account WHERE LOWER(username) = LOWER($1)""",
         data.username.strip(),
+        data.password,
     )
     if (
         row is None
         or not row["is_active"]
-        or not bcrypt.checkpw(data.password.encode("utf-8"), row["password_hash"].encode("utf-8"))
+        or not row["password_matches"]
     ):
         raise HTTPException(status_code=401, detail="Invalid admin username or password.")
     set_session_cookie(
